@@ -8,14 +8,16 @@ import yaml
 
 from pathlib import Path
 
-DEFAULT_PATH_ROOT = ".embeddings"
+from hyphal_embedding import HyphalEmbedding
+
 DEFAULT_PATH_DATA = Path("data")
+DEFAULT_PATH_HYPHAL = Path(".hyphal/tree.yaml")
 INDEX_TREES = 2
 CHUNK_SIZE = 512  # 512 characters in document
 CHUNK_OVERLAP = 64  # 64 characters overlap
 
 
-class HyphalFileNode:
+class HyphalNode:
     """
     this is the file tree representation of the data directory
     it contains the root path, i.e. where the data lives
@@ -23,6 +25,7 @@ class HyphalFileNode:
     """
 
     root: Path
+    embedding: HyphalEmbedding
     children: list[Path]
 
     def __init__(self, root: Path = DEFAULT_PATH_DATA, children: list[Path] = []):
@@ -33,17 +36,19 @@ class HyphalFileNode:
         else:
             self.children = children
 
+        self.embedding = HyphalEmbedding.from_node(self)
+
     def __repr__(self):
         root = str(self.root)
-
-        children = []
-        for child in self.children:
-            child_root = str(child.root)
-            child_children = [str(grandchild) for grandchild in child.children]
-            children.append({"root": child_root, "children": child_children})
-
+        children = [yaml.safe_load(repr(child)) for child in self.children]
         node_dict = {"root": root, "children": children}
         return yaml.dump(node_dict, sort_keys=False, default_flow_style=False)
+
+    def save(self, path_to_hyphal: Path = DEFAULT_PATH_HYPHAL):
+        path = self.root / path_to_hyphal
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(repr(self))
 
     def get_children(self, path) -> list[Path]:
         directories = [
@@ -54,14 +59,14 @@ class HyphalFileNode:
 
         child_nodes = []
         for directory in directories:
-            print(directory)
-            filenames = [filename for filename in directory.iterdir()]
-            child_node = HyphalFileNode(root=directory, children=filenames)
+            filenames = [filename.stem for filename in directory.iterdir()]
+            child_node = HyphalNode(root=directory.relative_to(path), children=filenames)
             child_nodes.append(child_node)
 
         return child_nodes
 
 
 if __name__ == "__main__":
-    hyphal_tree = HyphalFileNode()
+    hyphal_tree = HyphalNode()
+    hyphal_tree.save()
     print(hyphal_tree)
